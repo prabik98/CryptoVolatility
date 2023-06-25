@@ -137,6 +137,7 @@ func calculateVolatility(optionPrice float64, timeToExpiry float64, strike float
 	}
 
 	return vol
+
 }
 
 func calculateOptionPrice(spot, strike, timeToExpiry, volatility, riskFreeRate, optionType float64) float64 {
