@@ -18,7 +18,7 @@ type UpdateVolatilityRequestPayload struct {
 	LastTrade float64 `json:"last_trade,string"`
 }
 
-type GeVolatilityRequestPayload struct {
+type GetVolatilityRequestPayload struct {
 	Symbol string  `json:"symbol"`
 	Expiry string  `json:"expiry"`
 	Strike float64 `json:"strike,string"`

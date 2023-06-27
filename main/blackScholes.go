@@ -3,82 +3,29 @@ package main
 import (
 	"encoding/json"
 	"fmt"
-	"io/ioutil"
-	"log"
+	"io"
 	"math"
 	"net/http"
 	"net/url"
 	"time"
-
-	"github.com/go-pg/pg/v10"
-	"github.com/prabik98/syndr/main/models"
-	"golang.org/x/time/rate"
-)
-
-var (
-	username = "abc"
-	password = "123"
 )
 
 var volatilitySurface map[string]map[string]map[float64]float64
 
-func rateLimiter(next func(w http.ResponseWriter, r *http.Request)) http.Handler {
-	limiter := rate.NewLimiter(2, 4)
-	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		if !limiter.Allow() {
-			message := models.Message{
-				Status: "Request Failed",
-				Body:   "The API is at capacity, try again later.",
-			}
-
-			w.WriteHeader(http.StatusTooManyRequests)
-			json.NewEncoder(w).Encode(&message)
-			return
-		} else {
-			next(w, r)
-		}
-	})
-}
-
-func main() {
-	db := connectToDatabase()
-	defer db.Close()
-	volatilitySurface = make(map[string]map[string]map[float64]float64)
-	fmt.Printf("volatility: %.2f%%\n", calculateVolatility(303, 2, 8100, 8400, 1))
-
-	http.Handle("/volatility", rateLimiter(getVolatility))
-	http.Handle("/update", rateLimiter(updateVolatility))
-	log.Fatal(http.ListenAndServe(":8080", nil))
-}
-
-func connectToDatabase() *pg.DB {
-	opt, err := pg.ParseURL("postgres://prabik98:incorrect@localhost:5432/PostgreSQL")
-	if err != nil {
-		log.Fatal("Failed to parse database URL:", err)
-	}
-
-	db := pg.Connect(opt)
-	if db == nil {
-		log.Fatal("Failed to connect to the database")
-	}
-
-	return db
-}
-
 func getVolatility(w http.ResponseWriter, r *http.Request) {
-	// Parse request payload
-	var requestPayload GeVolatilityRequestPayload
+	/*Parse Request Payload*/
+	var requestPayload GetVolatilityRequestPayload
 	err := json.NewDecoder(r.Body).Decode(&requestPayload)
 	if err != nil {
-		http.Error(w, err.Error()+" ;-;", http.StatusBadRequest)
+		http.Error(w, err.Error()+" -", http.StatusBadRequest)
 		return
 	}
-	optionType := 1.0
+	optionType := 0.0
 
-	// Get volatility from the volatility surface
+	/*Get volatility from the volatility surface*/
 	volatility := getVolatilityFromSurface(requestPayload.Symbol, requestPayload.Expiry, requestPayload.Strike, requestPayload.Spot, optionType)
 
-	// Create response payload
+	/*Create Response Payload*/
 	response := OptionVolatility{
 		Symbol:     requestPayload.Symbol,
 		Expiration: parseDate(requestPayload.Expiry),
@@ -87,31 +34,17 @@ func getVolatility(w http.ResponseWriter, r *http.Request) {
 		Timestamp:  time.Now(),
 	}
 
-	// Send response
+	/*Send Response*/
 	w.Header().Set("Content-Type", "application/json")
 	json.NewEncoder(w).Encode(response)
 }
 
 func updateVolatility(w http.ResponseWriter, r *http.Request) {
-	// Parse request payload
+	/*Parse Request Payload*/
 	w.Header().Set("Content-Type", "application/json")
-	u, p, ok := r.BasicAuth()
-	if !ok {
-		fmt.Println("Error parsing basic auth")
-		json.NewEncoder(w).Encode("Provide basic auth")
-		w.WriteHeader(401)
-		return
-	}
-	if u != username {
-		fmt.Printf("Username provided is incorrect: %s\n", u)
-		json.NewEncoder(w).Encode("Username provided is incorrect")
-		w.WriteHeader(401)
-		return
-	}
-	if p != password {
-		fmt.Printf("Password provided is incorrect: %s\n", u)
-		json.NewEncoder(w).Encode("Password provided is incorrect")
-		w.WriteHeader(401)
+
+	/*Authenticatication*/
+	if !authenticate(w, r) {
 		return
 	}
 	var requestPayload UpdateVolatilityRequestPayload
@@ -120,13 +53,13 @@ func updateVolatility(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, err.Error(), http.StatusBadRequest)
 		return
 	}
-	optionType := 1.0
+	optionType := 0.0
 
-	// Update the volatility surface with the latest trade
+	/*Update Volatility Surface with Latest Trade*/
 	updateVolatilitySurface(requestPayload.Symbol, requestPayload.Expiry, requestPayload.Strike, requestPayload.Spot, requestPayload.LastTrade, optionType)
 
-	// Send response
-	json.NewEncoder(w).Encode("Updation successful")
+	/*Send Response*/
+	json.NewEncoder(w).Encode("Volatility Updation Successful")
 	w.WriteHeader(http.StatusOK)
 }
 
@@ -135,62 +68,51 @@ func calculateVolatility(optionPrice float64, timeToExpiry float64, strike float
 		return 0.0
 	}
 
-	riskFreeRate := 0.07
+	riskFreeRate := 0.05
 
 	maxIterations := 1000
 	leastDiff := 10000.0
-	vol := 0.0
+	volatility := 0.0
 
 	low := 0.0
-	high := 100000.0 // Assuming an initial range of 0.0 to 10.0
+	high := 1e6 + 7 /*Assuming an initial range for volatility*/
 
 	for i := 0; i < maxIterations; i++ {
 		if low >= high {
 			break
 		}
 
-		mid := (low + high) / 2.0
+		mid := low + (high-low)/2.0
 		simulatedOptionPrice := calculateOptionPrice(spot, strike, timeToExpiry, mid, riskFreeRate, optionType)
-		// fmt.Printf("optionPrice for %.2f %.2f %.2f %.2f %.2f %.2f %.2f %.2f: %.2f\n", spot, strike, timeToExpiry, low, mid, high, riskFreeRate, optionType, simulatedOptionPrice)
+		/*fmt.Printf("optionPrice for %.2f %.2f %.2f %.2f %.2f %.2f %.2f %.2f: %.2f\n", spot, strike, timeToExpiry, low, mid, high, riskFreeRate, optionType, simulatedOptionPrice)*/
 
 		if math.Abs(simulatedOptionPrice-optionPrice) < leastDiff {
 			leastDiff = math.Abs(simulatedOptionPrice - optionPrice)
-			vol = mid
+			volatility = mid
+			/*fmt.Printf("vol %.2f", vol)*/
 		}
 		if simulatedOptionPrice == optionPrice {
 			break
 		}
-
 		if simulatedOptionPrice < optionPrice {
 			low = mid
+			/*fmt.Printf("low %.2f", low)*/
 		} else {
 			high = mid
+			/*fmt.Printf("high %.2f", high)*/
 		}
 	}
-	vol = low
-	return vol
+	volatility = low
+	/*fmt.Printf("vol %.2f", vol)*/
+	return volatility
 }
 
 func calculateOptionPrice(spot, strike, timeToExpiry, volatility, riskFreeRate, optionType float64) float64 {
 
-	return blackScholes2(spot, strike, int(timeToExpiry), volatility, riskFreeRate, optionType)
+	return blackScholes(spot, strike, int(timeToExpiry), volatility, riskFreeRate, optionType)
 }
 
-func blackScholes(spotPrice, strikePrice float64, expirationDate int, volatility float64, riskFreeRate float64) float64 {
-	// Constants
-	timeToExpiration := float64(expirationDate) / 365.0
-
-	// Calculate d1 and d2
-	d1 := (math.Log(spotPrice/strikePrice) + (riskFreeRate+0.5*volatility*volatility)*timeToExpiration) / (volatility * math.Sqrt(timeToExpiration))
-	d2 := d1 - volatility*math.Sqrt(timeToExpiration)
-
-	// Calculate option price using Black-Scholes formula
-	callPrice := spotPrice*math.Exp(-riskFreeRate*timeToExpiration)*normalCDF(d1) - strikePrice*math.Exp(-riskFreeRate*timeToExpiration)*normalCDF(d2)
-
-	return callPrice
-}
-
-func blackScholes2(spotPrice, strikePrice float64, expirationDate int, volatility, riskFreeRate float64, optionType float64) float64 {
+func blackScholes(spotPrice, strikePrice float64, expirationDate int, volatility, riskFreeRate float64, optionType float64) float64 {
 	// Constants
 	timeToExpiration := float64(expirationDate) / 365.0
 
@@ -211,10 +133,6 @@ func blackScholes2(spotPrice, strikePrice float64, expirationDate int, volatilit
 func normalCDF(x float64) float64 {
 	// return 0.5 * (1 + math.Erf(x/math.Sqrt2))
 	return 0.5 * math.Erfc(-(x)/(math.Sqrt2))
-}
-
-func normalPDF(x float64) float64 {
-	return math.Exp(-0.5*x*x) / math.Sqrt(2*math.Pi)
 }
 
 func getVolatilityFromSurface(symbol, expiry string, strike, spot float64, optionType float64) float64 {
@@ -314,7 +232,7 @@ func fetchDeribitIV(symbol, expiry string, strike float64) (float64, error) {
 	defer resp.Body.Close()
 
 	// Read the response body
-	body, err := ioutil.ReadAll(resp.Body)
+	body, err := io.ReadAll(resp.Body)
 	if err != nil {
 		return 0.0, err
 	}
@@ -341,7 +259,6 @@ func compareWithVolatilitySurface(symbol, expiry string, strike, deribitIV float
 }
 
 func parseDate(dateString string) time.Time {
-
 	res, _ := time.Parse("2006-01-02", dateString)
 	return res
 }
