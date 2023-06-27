@@ -16,6 +16,5 @@ func connectToDatabase() *pg.DB {
 	if db == nil {
 		log.Fatal("Failed to connect to the database")
 	}
-
 	return db
 }

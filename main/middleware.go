@@ -8,8 +8,9 @@ import (
 	"golang.org/x/time/rate"
 )
 
+/*Rate Limiter*/
 func rateLimiter(next func(w http.ResponseWriter, r *http.Request)) http.Handler {
-	limiter := rate.NewLimiter(2, 4)
+	limiter := rate.NewLimiter(clientsCount, burstSize)
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if !limiter.Allow() {
 			message := Message{
@@ -25,22 +26,23 @@ func rateLimiter(next func(w http.ResponseWriter, r *http.Request)) http.Handler
 	})
 }
 
+/*Basic Authorization*/
 func authenticate(w http.ResponseWriter, r *http.Request) bool {
-	u, p, ok := r.BasicAuth()
+	user, passkey, ok := r.BasicAuth()
 	if !ok {
 		fmt.Println("Error parsing basic authorization")
 		json.NewEncoder(w).Encode("Provide basic authorization")
 		w.WriteHeader(http.StatusUnauthorized)
 		return false
 	}
-	if u != username {
-		fmt.Printf("Username provided is incorrect: %s\n", u)
+	if user != username {
+		fmt.Printf("Username provided is incorrect: %s\n", user)
 		json.NewEncoder(w).Encode("Username provided is incorrect")
 		w.WriteHeader(http.StatusUnauthorized)
 		return false
 	}
-	if p != password {
-		fmt.Printf("Password provided is incorrect: %s\n", u)
+	if passkey != password {
+		fmt.Printf("Password provided is incorrect: %s\n", user)
 		json.NewEncoder(w).Encode("Password provided is incorrect")
 		w.WriteHeader(http.StatusUnauthorized)
 		return false
