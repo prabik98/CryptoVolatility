@@ -11,36 +11,9 @@ import (
 	"time"
 
 	"github.com/go-pg/pg/v10"
+	"github.com/prabik98/syndr/main/models"
 	"golang.org/x/time/rate"
 )
-
-type OptionVolatility struct {
-	Symbol     string    `json:"symbol"`
-	Expiration time.Time `json:"expiration"`
-	Strike     float64   `json:"strike"`
-	Volatility float64   `json:"volatility"`
-	Timestamp  int64     `json:"timestamp"`
-}
-
-type UpdateVolatilityRequestPayload struct {
-	Symbol    string  `json:"symbol"`
-	Expiry    string  `json:"expiry"`
-	Strike    float64 `json:"strike,string"`
-	Spot      float64 `json:"spot,string"`
-	LastTrade float64 `json:"last_trade,string"`
-}
-
-type GeVolatilityRequestPayload struct {
-	Symbol string  `json:"symbol"`
-	Expiry string  `json:"expiry"`
-	Strike float64 `json:"strike,string"`
-	Spot   float64 `json:"spot,string"`
-}
-
-type Message struct {
-	Status string `json:"status"`
-	Body   string `json:"body"`
-}
 
 var (
 	username = "abc"
@@ -53,7 +26,7 @@ func rateLimiter(next func(w http.ResponseWriter, r *http.Request)) http.Handler
 	limiter := rate.NewLimiter(2, 4)
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if !limiter.Allow() {
-			message := Message{
+			message := models.Message{
 				Status: "Request Failed",
 				Body:   "The API is at capacity, try again later.",
 			}
@@ -111,7 +84,7 @@ func getVolatility(w http.ResponseWriter, r *http.Request) {
 		Expiration: parseDate(requestPayload.Expiry),
 		Strike:     requestPayload.Strike,
 		Volatility: volatility,
-		Timestamp:  time.Now().Unix(),
+		Timestamp:  time.Now(),
 	}
 
 	// Send response
