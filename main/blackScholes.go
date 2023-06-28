@@ -40,7 +40,7 @@ func calculateVolatility(optionPrice float64, timeToExpiry float64, strike float
 		return 0.0
 	}
 	if OptionType != "CALL" && OptionType != "PUT" {
-		fmt.Println("Please Provide CALL/PUT Option Type for Black-Scholes Price Calculation")
+		fmt.Println("Please Provide CALL/PUT Option Type for Black-Scholes Volatility Calculation")
 		return 0.0
 	}
 
