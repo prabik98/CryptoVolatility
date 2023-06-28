@@ -12,6 +12,29 @@ import (
 
 var volatilitySurface map[string]map[string]map[float64]float64
 
+func blackScholes(spotPrice, strikePrice float64, expirationDate int64, volatility float64, riskFreeRate float64, OptionType string) float64 {
+	timeForExpiration := float64(expirationDate) / 365.0
+
+	/*d1 and d2 Calculation*/
+	d1 := (math.Log(spotPrice/strikePrice) + (riskFreeRate+0.5*volatility*volatility)*timeForExpiration) / (volatility * math.Sqrt(timeForExpiration))
+	d2 := d1 - volatility*math.Sqrt(timeForExpiration)
+
+	/*Option Price Calculation using Black-Scholes formula*/
+	if OptionType == "CALL" {
+		callPrice := spotPrice*math.Exp(-riskFreeRate*timeForExpiration)*normalCDF(d1) - strikePrice*math.Exp(-riskFreeRate*timeForExpiration)*normalCDF(d2)
+		return callPrice
+	} else if OptionType == "PUT" {
+		putPrice := strikePrice*math.Exp(-riskFreeRate*timeForExpiration)*normalCDF(-d2) - spotPrice*math.Exp(-riskFreeRate*timeForExpiration)*normalCDF(-d1)
+		return putPrice
+	} else {
+		return 0.0
+	}
+}
+
+func calculateOptionPrice(spot float64, strike float64, timeToExpiry float64, volatility float64, riskFreeRate float64, OptionType string) float64 {
+	return blackScholes(spot, strike, int64(timeToExpiry), volatility, riskFreeRate, OptionType)
+}
+
 func calculateVolatility(optionPrice float64, timeToExpiry float64, strike float64, spot float64, OptionType string) float64 {
 	if timeToExpiry <= 0 {
 		return 0.0
@@ -58,102 +81,6 @@ func calculateVolatility(optionPrice float64, timeToExpiry float64, strike float
 	return volatilityResult
 }
 
-func calculateOptionPrice(spot float64, strike float64, timeToExpiry float64, volatility float64, riskFreeRate float64, OptionType string) float64 {
-	return blackScholes(spot, strike, int64(timeToExpiry), volatility, riskFreeRate, OptionType)
-}
-
-func blackScholes(spotPrice, strikePrice float64, expirationDate int64, volatility float64, riskFreeRate float64, OptionType string) float64 {
-	timeForExpiration := float64(expirationDate) / 365.0
-
-	/*d1 and d2 Calculation*/
-	d1 := (math.Log(spotPrice/strikePrice) + (riskFreeRate+0.5*volatility*volatility)*timeForExpiration) / (volatility * math.Sqrt(timeForExpiration))
-	d2 := d1 - volatility*math.Sqrt(timeForExpiration)
-
-	/*Option Price Calculation using Black-Scholes formula*/
-	if OptionType == "CALL" {
-		callPrice := spotPrice*math.Exp(-riskFreeRate*timeForExpiration)*normalCDF(d1) - strikePrice*math.Exp(-riskFreeRate*timeForExpiration)*normalCDF(d2)
-		return callPrice
-	} else if OptionType == "PUT" {
-		putPrice := strikePrice*math.Exp(-riskFreeRate*timeForExpiration)*normalCDF(-d2) - spotPrice*math.Exp(-riskFreeRate*timeForExpiration)*normalCDF(-d1)
-		return putPrice
-	} else {
-		return 0.0
-	}
-}
-
-func getVolatilityFromSurface(symbol, expiry string, strike, spot float64, OptionType string) float64 {
-	/*Check if Volatility exists in the Surface*/
-	if volSurface, ok := volatilitySurface[symbol]; ok {
-		if expirySurface, ok := volSurface[expiry]; ok {
-			if strikeVolatility, ok := expirySurface[strike]; ok {
-				return strikeVolatility
-			} else {
-				expiryDate, err := time.Parse("2006-01-02", expiry)
-				if err != nil {
-					print(err)
-					return 0
-				}
-				timeToExpiry := time.Until(expiryDate).Hours() / 24
-				fmt.Println(timeToExpiry)
-				volatilitySurface[symbol][expiry][strike] = calculateVolatility(spot/10, float64(timeToExpiry), strike, spot, OptionType)
-				fmt.Println(volatilitySurface[symbol][expiry][strike])
-			}
-		} else {
-			volatilitySurface[symbol][expiry] = make(map[float64]float64)
-			expiryDate, err := time.Parse("2006-01-02", expiry)
-			if err != nil {
-				print(err)
-				return 0
-			}
-			timeToExpiry := time.Until(expiryDate).Hours() / 24
-			fmt.Println(timeToExpiry)
-			volatilitySurface[symbol][expiry][strike] = calculateVolatility(spot/10, float64(timeToExpiry), strike, spot, OptionType)
-			fmt.Println(volatilitySurface[symbol][expiry][strike])
-		}
-	} else {
-		volatilitySurface[symbol] = make(map[string]map[float64]float64)
-		volatilitySurface[symbol][expiry] = make(map[float64]float64)
-		expiryDate, err := time.Parse("2006-01-02", expiry)
-		if err != nil {
-			print(err)
-			return 0
-		}
-		timeToExpiry := time.Until(expiryDate).Hours() / 24
-		fmt.Println(timeToExpiry)
-		volatilitySurface[symbol][expiry][strike] = calculateVolatility(spot/10, float64(timeToExpiry), strike, spot, OptionType)
-		fmt.Println(volatilitySurface[symbol][expiry][strike])
-	}
-
-	// Fetch the latest IV data from Deribit's API as a backstop
-	deribitIV, _err := fetchDeribitIV(symbol, expiry, strike)
-	if _err != nil {
-		print(_err)
-		return 0.0
-	}
-	// Compare with existing volatility surface
-	if vol, err := compareWithVolatilitySurface(symbol, expiry, strike, deribitIV); err == nil {
-		return vol
-	}
-	// If volatility not found in the surface and backstop, return a default value
-
-	return volatilitySurface[symbol][expiry][strike]
-}
-
-func updateVolatilitySurface(symbol, expiry string, strike, spot, lastTrade float64, OptionType string) {
-	// Update the volatility surface with the latest trade
-	if _, ok := volatilitySurface[symbol]; !ok {
-		volatilitySurface[symbol] = make(map[string]map[float64]float64)
-	}
-	if _, ok := volatilitySurface[symbol][expiry]; !ok {
-		volatilitySurface[symbol][expiry] = make(map[float64]float64)
-	}
-	// TODO: calculate time to expiry
-	expiryDate := parseDate(expiry)
-
-	timeToExpiry := time.Until(expiryDate).Hours() / 24
-	volatilitySurface[symbol][expiry][strike] = calculateVolatility(lastTrade, float64(timeToExpiry), strike, spot, OptionType)
-}
-
 func fetchDeribitIV(symbol, expiry string, strike float64) (float64, error) {
 	baseURL := "https://www.deribit.com/api/v2/public/get_historical_volatility"
 
@@ -193,4 +120,119 @@ func compareWithVolatilitySurface(symbol, expiry string, strike, deribitIV float
 		return deribitIV, fmt.Errorf("more than 2 percent deviation")
 	}
 	return volatilitySurface[symbol][expiry][strike], nil
+}
+
+// func getVolatilityFromSurface(symbol, expiry string, strike, spot float64, OptionType string) float64 {
+// 	/*If Volatility exists in the Surface Check*/
+// 	if volSurface, ok := volatilitySurface[symbol]; ok {
+// 		if expirySurface, ok := volSurface[expiry]; ok {
+// 			if strikeVolatility, ok := expirySurface[strike]; ok {
+// 				return strikeVolatility
+// 			} else {
+// 				expiryDate, err := time.Parse("2006-01-02", expiry)
+// 				if err != nil {
+// 					print(err)
+// 					return 0
+// 				}
+// 				timeToExpiry := time.Until(expiryDate).Hours() / 24
+// 				fmt.Println(timeToExpiry)
+// 				volatilitySurface[symbol][expiry][strike] = calculateVolatility(spot/10, float64(timeToExpiry), strike, spot, OptionType)
+// 				fmt.Println(volatilitySurface[symbol][expiry][strike])
+// 			}
+// 		} else {
+// 			volatilitySurface[symbol][expiry] = make(map[float64]float64)
+// 			expiryDate, err := time.Parse("2006-01-02", expiry)
+// 			if err != nil {
+// 				print(err)
+// 				return 0
+// 			}
+// 			timeToExpiry := time.Until(expiryDate).Hours() / 24
+// 			fmt.Println(timeToExpiry)
+// 			volatilitySurface[symbol][expiry][strike] = calculateVolatility(spot/10, float64(timeToExpiry), strike, spot, OptionType)
+// 			fmt.Println(volatilitySurface[symbol][expiry][strike])
+// 		}
+// 	} else {
+// 		volatilitySurface[symbol] = make(map[string]map[float64]float64)
+// 		volatilitySurface[symbol][expiry] = make(map[float64]float64)
+// 		expiryDate, err := time.Parse("2006-01-02", expiry)
+// 		if err != nil {
+// 			print(err)
+// 			return 0
+// 		}
+// 		timeToExpiry := time.Until(expiryDate).Hours() / 24
+// 		fmt.Println(timeToExpiry)
+// 		volatilitySurface[symbol][expiry][strike] = calculateVolatility(spot/10, float64(timeToExpiry), strike, spot, OptionType)
+// 		fmt.Println(volatilitySurface[symbol][expiry][strike])
+// 	}
+
+// 	/*Fetch the latest IV data from Deribit's API as a backstop*/
+// 	deribitIV, _err := fetchDeribitIV(symbol, expiry, strike)
+// 	if _err != nil {
+// 		print(_err)
+// 		return 0.0
+// 	}
+// 	/*Compare with existing volatility surface*/
+// 	if vol, err := compareWithVolatilitySurface(symbol, expiry, strike, deribitIV); err == nil {
+// 		return vol
+// 	}
+// 	/*If volatility not found in the surface & backstop, return default*/
+// 	return volatilitySurface[symbol][expiry][strike]
+// }
+
+func getVolatilityFromSurface(symbol, expiry string, strike, spot float64, OptionType string) float64 {
+	/*If volatility exists in the surface Check*/
+	if volSurface, ok := volatilitySurface[symbol]; ok {
+		if expirySurface, ok := volSurface[expiry]; ok {
+			if strikeVolatility, ok := expirySurface[strike]; ok {
+				return strikeVolatility
+			}
+		} else {
+			volatilitySurface[symbol][expiry] = make(map[float64]float64)
+		}
+	} else {
+		volatilitySurface[symbol] = make(map[string]map[float64]float64)
+		volatilitySurface[symbol][expiry] = make(map[float64]float64)
+	}
+
+	/*Time to Expiry Calculation*/
+	expiryDate, err := time.Parse("2006-01-02", expiry)
+	if err != nil {
+		fmt.Println(err)
+		return 0
+	}
+	timeToExpiry := time.Until(expiryDate).Hours() / 24
+
+	/*Calculate & store volatility in the surface*/
+	volatility := calculateVolatility(spot/10, float64(timeToExpiry), strike, spot, OptionType)
+	volatilitySurface[symbol][expiry][strike] = volatility
+
+	/*Fetch the latest IV data from Deribit's API as a backstop*/
+	deribitIV, err := fetchDeribitIV(symbol, expiry, strike)
+	if err != nil {
+		fmt.Println(err)
+		return 0.0
+	}
+
+	/*Compare with existing volatility surface*/
+	if vol, err := compareWithVolatilitySurface(symbol, expiry, strike, deribitIV); err == nil {
+		return vol
+	}
+
+	/*If volatility not found in the surface & backstop, return default*/
+	return volatilitySurface[symbol][expiry][strike]
+}
+
+func updateVolatilitySurface(symbol, expiry string, strike, spot, lastTrade float64, OptionType string) {
+	/*Update the volatility surface with the latest trade*/
+	if _, ok := volatilitySurface[symbol]; !ok {
+		volatilitySurface[symbol] = make(map[string]map[float64]float64)
+	}
+	if _, ok := volatilitySurface[symbol][expiry]; !ok {
+		volatilitySurface[symbol][expiry] = make(map[float64]float64)
+	}
+	/*calculate time to expiry*/
+	expiryDate := parseDate(expiry)
+
+	timeToExpiry := time.Until(expiryDate).Hours() / 24
+	volatilitySurface[symbol][expiry][strike] = calculateVolatility(lastTrade, float64(timeToExpiry), strike, spot, OptionType)
 }

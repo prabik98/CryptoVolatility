@@ -61,7 +61,7 @@ func main() {
 	db := connectToDatabase()
 	defer db.Close()
 	volatilitySurface = make(map[string]map[string]map[float64]float64)
-	fmt.Printf("volatility: %.2f%%\n", calculateVolatility(303, 2, 8100, 8400, "CALL"))
+	fmt.Printf("Volatility Result: %.2f%%\n", calculateVolatility(303, 2, 8100, 8400, "CALL"))
 
 	http.Handle("/volatility", rateLimiter(getVolatility))
 	http.Handle("/update", rateLimiter(updateVolatility))
