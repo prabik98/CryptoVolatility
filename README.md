@@ -1,11 +1,2 @@
-# blackScholes
-
-• Developed REST API to calculate volatility surface of BTC/ETH options for a given Expiry date, Spot & Strike Price
-
-• Implemented Black-Scholes model for options pricing to estimate volatility, leveraging Binary Search algorithm for
-  optimization. Added endpoint to update volatility surface based on latest trade as input
-  
-• Utilized Deribit’s API to fetch implied volatility data for BTC/ETH options, establishing it as a reliable benchmark
-  and ensuring consistency within a 2% deviation threshold as a fallback to maintain accuracy
-  
-• Integrated Rate-Limiter, Basic Authorization, Caching mechanism for the volatility surface in PostgreSQL
+REST API to compute the volatility surface of BTC and ETH options based on given expiry dates, spot prices, and strike prices, Integrated the Black-Scholes model for options pricing, employing a Binary Search algorithm to optimize the estimation of volatility.
+Created an endpoint to update the volatility surface dynamically, utilizing the latest trade data as input. Leveraged Deribit’s API to retrieve implied volatility data for BTC/ETH options, ensuring reliable benchmarks and maintaining consistency within a 2% deviation threshold to ensure accuracy.
