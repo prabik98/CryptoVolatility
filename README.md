@@ -1,5 +1,3 @@
-# blackScholes
-
 Derived volatility surface of BTC and ETH options based on given expiry dates, spot prices, and strike prices
 
 # About
